@@ -1,0 +1,111 @@
+---
+title: "Andhra Pradesh, Krishna district response data"
+author: "Govind Gupta"
+date: "November 13, 2015"
+output:
+  html_document: null
+  pdf_document: default
+---
+
+Complete "Collect" responses collected from Krishna District of Andhra Pradesh in the year 2015.
+
+******
+
+### Problem Statement
+
+A client of SocialCops was using Collect for household Survey in the Krishna district of Andhra Pradesh. It turns out in some responses, data collectors have missed entering the Assembly Constitueny Names (AC), Mandal Names and Village Names in the relevant field. Fortunately, the client has maintained a database of all the tablets being deployed in different villages in different dates. Attached is an excel file <TabVillagesMapping.xlsx> containing two sheets: Sheet 1 one contains a list of around 21,000 responses for which AC, Mandal and Village Names are missing and Sheet 2 contains a list of tablets in use in different villages in different dates. Can you get the missing Village Names?
+
+******
+
+### Solution
+
+To get the missing village names along with Assembly Constituency Names and Mandal names. Following approach was choosen to get the maximum accuracy and completeness of data
+
+1. First step is to load the Excel data into R environment using xlsx package. Here sheet1 that contains the acutal response data (Response.No) collected using tablets is stored in `response_data`. Likewise the sheet2 containg data on how all the tablets were distributed across Krishna district, Andhra Pradesh is stored in `tab_data`.
+
+```{r}
+library(xlsx)
+
+response_data <- read.xlsx("Tab_Villages_Mapping, Krishna District, 25 July 2015.xlsx", sheetIndex = 1)
+tab_data <- read.xlsx("Tab_Villages_Mapping, Krishna District, 25 July 2015.xlsx", sheetIndex = 2)
+```
+
+2. Now the data is set to its proper foramt and data type. Dates are coerced using as.Dates() and string data using as.character.
+
+```{r}
+response_data$Survey.Date <- as.Date(response_data$Survey.Date, format = "%Y-%m-%d")
+
+tab_data$AC.Name <- as.character(tab_data$AC.Name)
+tab_data$Mandal.Name <- as.character(tab_data$Mandal.Name)
+tab_data$Village.Name <- as.character(tab_data$Village.Name)
+tab_data$Survey.Start.Date <- as.Date(tab_data$Survey.Start.Date, format = "%d-%b-%Y")
+tab_data$Survey.End.Date <- as.Date(tab_data$Survey.End.Date, format = "%d-%b-%Y")
+```
+
+3. Now the main logic is implemented. To merge the data together 
+    1. Iterate through rows of `response_data` and search for all of it's Tab.No in tab_data$Tab.No.
+    2. For all the rows obtained to have a match, check if response_data$Survey.Date lies within range of Survey as mentoined in Survet.Start.Date and Survey.End.Date.
+    3. If there are no conflicts i.e only one match for above two conditions then copy the AC.Name, Mandal.Name and Village.Name of `tab_data` into the respective fields of `response_data`.
+    4. If there are more than one solution that matches the above two conditions i.e same Tab.No and the Survey.Date lies between Survey.Start.Date and Survey.End.Date then calculate the median of Survey.Start.Date and Survey.End.Date and the solution which has closer Survey.Date is used.
+    5. If the multiple solution's median date in point 4 are equally closer to Survey.Date then the first solution by default is choosen.
+    6. For rest of the cases where there is no match in the said conditions NA values remain as it is.
+  
+```{r}
+for(i in c(1:nrow(response_data))){
+  match_tab <- which(response_data$Tab.No[i] == tab_data$Tab.No)
+  match_tab_date <- which(response_data$Survey.Date[i] <= tab_data$Survey.End.Date[match_tab]  & 
+                            response_data$Survey.Date[i] >= tab_data$Survey.Start.Date[match_tab])
+  
+  if(length(match_tab_date) == 1){
+    response_data$AC.Name[i] <- tab_data$AC.Name[match_tab[match_tab_date]]
+    response_data$Mandal.Name[i] <- tab_data$Mandal.Name[match_tab[match_tab_date]]
+    response_data$Village.Name[i] <- tab_data$Village.Name[match_tab[match_tab_date]]
+  }
+  if(length(match_tab_date > 1)){
+    mean_date <- tab_data$Survey.End.Date[match_tab[match_tab_date]] - tab_data$Survey.Start.Date[match_tab[match_tab_date]]
+    mean_date <- mean_date/2
+    mean_date <- mean_date + tab_data$Survey.Start.Date[match_tab[match_tab_date]]
+    final_match_index <- which(abs(response_data$Survey.Date[i] - mean_date) == min(abs(response_data$Survey.Date[i] - mean_date)))
+    if(length(final_match_index) > 1){
+      response_data$AC.Name[i] <- tab_data$AC.Name[match_tab[match_tab_date][final_match_index][1]]
+      response_data$Mandal.Name[i] <- tab_data$Mandal.Name[match_tab[match_tab_date][final_match_index][1]]
+      response_data$Village.Name[i] <- tab_data$Village.Name[match_tab[match_tab_date][final_match_index][1]]
+    }
+    else{
+      response_data$AC.Name[i] <- tab_data$AC.Name[match_tab[match_tab_date][final_match_index]]
+      response_data$Mandal.Name[i] <- tab_data$Mandal.Name[match_tab[match_tab_date][final_match_index]]
+      response_data$Village.Name[i] <- tab_data$Village.Name[match_tab[match_tab_date][final_match_index]]
+    }
+  }
+}
+```
+
+4. Now the final data is written onto a file "question1_tidy_data.csv".
+
+```{r}
+file.create("question1_tidy_data.csv")
+write.csv(response_data, file = "question1_tidy_data.csv")
+```
+
+5. Below is a small sample of the final data obtained.
+
+```{r set-options, cache=FALSE}
+options(width = 80)
+head(response_data, n=100)
+```
+
+6. Following is the summary of the data.
+
+```{r, echo=FALSE}
+response_data$AC.Name <- factor(response_data$AC.Name)
+response_data$Mandal.Name <- factor(response_data$Mandal.Name)
+response_data$Village.Name <- factor(response_data$Village.Name)
+summary(response_data)
+```
+
+******
+### Result
+
+The given problem statement was solved and the missing data was added to the spread sheet.
+
+*The final data file is also attached. This file needs to be placed in the same folder with the "Tab_Villages_Mapping, Krishna District, 25 July 2015.xlsx" for it to work.
